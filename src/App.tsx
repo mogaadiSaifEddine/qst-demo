@@ -49,23 +49,7 @@ const QuestionBuilder = () => {
           explain_image: null,
           order: 1
         },
-        {
-          id: 2,
-          res_answer: {
-            en: 'London',
-            fr: 'Londres',
-            is: 'London'
-          },
-          res_explain: {
-            en: 'Incorrect. London is the capital of England.',
-            fr: 'Incorrect. Londres est la capitale de l\'Angleterre.',
-            is: 'Rangt. London er höfuðborg Englands.'
-          },
-          is_correct: false,
-          image: null,
-          explain_image: null,
-          order: 2
-        }
+        
       ],
       category: 'Geography',
       tags: { geography: true, europe: true }
@@ -109,24 +93,7 @@ const QuestionBuilder = () => {
           is_correct: null,
           order: 1
         },
-        {
-          id: 2,
-          res_answer: {
-            en: '',
-            fr: '',
-            is: ''
-          },
-          res_explain: {
-            en: '',
-            fr: '',
-            is: ''
-          },
-          image: null,
-          explain_image: null,
-          next_question: null,
-          is_correct: null,
-          order: 2
-        }
+      
       ],
       category: 'Other',
       tags: {}
@@ -1054,39 +1021,7 @@ const QuestionBuilder = () => {
                               )}
                             </div>
 
-                            {!answer.next_question && (
-
-                              <div className="border-2 rounded-lg p-4" style={{ backgroundColor: '#f5f7fb', borderColor: '#d0dbed' }}>
-                                <div className="flex items-center gap-2 mb-3 font-semibold text-sm" style={{ color: '#688cd5' }}>
-                                  <CheckCircle size={16} />
-                                  <span>Answer Status</span>
-                                </div>
-                                <div className="flex items-center gap-6">
-                                  <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                      type="radio"
-                                      name={`answer-${answer.id}`}
-                                      checked={answer.is_correct === true}
-                                      onChange={() => updateAnswer(answer.id, 'is_correct', true)}
-                                      className="w-4 h-4"
-                                    />
-                                    <span className="text-sm font-medium text-gray-700">Correct</span>
-                                  </label>
-                                  <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                      type="radio"
-                                      name={`answer-${answer.id}`}
-                                      checked={answer.is_correct === false}
-                                      onChange={() => updateAnswer(answer.id, 'is_correct', false)}
-                                      className="w-4 h-4"
-                                    />
-                                    <span className="text-sm font-medium text-gray-700">Incorrect</span>
-                                  </label>
-                                </div>
-                              </div>
-                            )}
-
-                            {currentQuestion.question_type !== 'written-answer' && answer.is_correct == null && (
+                            {currentQuestion.question_type !== 'written-answer' && (
                               <div className="border-2 rounded-lg p-4" style={{ backgroundColor: '#f5f7fb', borderColor: '#d0dbed' }}>
                                 <div className="flex items-center gap-2 mb-3 font-semibold text-sm" style={{ color: '#688cd5' }}>
                                   <GitBranch size={16} />
@@ -1094,8 +1029,9 @@ const QuestionBuilder = () => {
                                 </div>
 
                                 <div className="space-y-3">
+                                  {/* Nested Question Section - shown when a question is linked */}
                                   {answer.next_question && (
-                                    <div className="bg-white border rounded-lg p-3">
+                                    <div className="bg-white border-2 rounded-lg p-3 animate-fadeIn" style={{ borderColor: '#688cd5' }}>
                                       <div className="flex items-center justify-between">
                                         <div className="flex-1">
                                           <div className="flex items-center gap-2 mb-1">
@@ -1111,63 +1047,172 @@ const QuestionBuilder = () => {
                                             {getBranchQuestion(answer)?.question?.[currentLanguage] || 'Untitled Question'}
                                           </div>
                                         </div>
-                                       
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            onClick={() => navigateToQuestion(answer.next_question.id)}
+                                            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                                            title="Edit Question"
+                                          >
+                                            <Edit size={16} style={{ color: '#688cd5' }} />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              const updatedAnswers = currentQuestion.answers.map(a =>
+                                                a.id === answer.id
+                                                  ? { ...a, next_question: null, is_correct: null }
+                                                  : a
+                                              );
+                                              updateCurrentQuestion({ answers: updatedAnswers });
+                                            }}
+                                            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                                            title="Unlink Question"
+                                          >
+                                            <X size={16} className="text-gray-500" />
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
                                   )}
 
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                      onClick={() => answer.next_question
-                                        ? navigateToQuestion(answer.next_question.id)
-                                        : createBranchQuestion(answer.id)
-                                      }
-                                      className="px-4 py-2.5 hover:opacity-90 text-white rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
-                                      style={{ backgroundColor: '#688cd5' }}
-                                    >
-                                      {answer.next_question ? (
-                                        <>
-                                          <Edit size={18} />
-                                          Edit Question
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Plus size={18} />
-                                          New Question
-                                        </>
-                                      )}
-                                    </button>
+                                  {/* Unified Choice Grid */}
+                                  <div className="grid grid-cols-2 gap-3">
+                                    {/* Correct Button/Card */}
                                     <button
                                       onClick={() => {
                                         if (answer.next_question) {
                                           const updatedAnswers = currentQuestion.answers.map(a =>
                                             a.id === answer.id
-                                              ? { ...a, next_question: null, is_correct: null }
+                                              ? { ...a, next_question: null, is_correct: true }
                                               : a
                                           );
                                           updateCurrentQuestion({ answers: updatedAnswers });
+                                        } else {
+                                          updateAnswer(answer.id, 'is_correct', true);
+                                        }
+                                      }}
+                                      className={`p-4 rounded-lg border-2 transition-all text-center ${
+                                        answer.is_correct === true
+                                          ? 'border-green-500 bg-green-50'
+                                          : 'border-gray-200 bg-white hover:border-green-300'
+                                      }`}
+                                    >
+                                      <div className={`w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-2 ${
+                                        answer.is_correct === true ? 'bg-green-500' : 'bg-green-100'
+                                      }`}>
+                                        <CheckCircle size={24} className={answer.is_correct === true ? 'text-white' : 'text-green-600'} />
+                                      </div>
+                                      <div className={`text-sm font-semibold ${
+                                        answer.is_correct === true ? 'text-green-700' : 'text-gray-700'
+                                      }`}>
+                                        Correct
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-1">Mark as correct answer</div>
+                                    </button>
+
+                                    {/* Incorrect Button/Card */}
+                                    <button
+                                      onClick={() => {
+                                        if (answer.next_question) {
+                                          const updatedAnswers = currentQuestion.answers.map(a =>
+                                            a.id === answer.id
+                                              ? { ...a, next_question: null, is_correct: false }
+                                              : a
+                                          );
+                                          updateCurrentQuestion({ answers: updatedAnswers });
+                                        } else {
+                                          updateAnswer(answer.id, 'is_correct', false);
+                                        }
+                                      }}
+                                      className={`p-4 rounded-lg border-2 transition-all text-center ${
+                                        answer.is_correct === false
+                                          ? 'border-red-500 bg-red-50'
+                                          : 'border-gray-200 bg-white hover:border-red-300'
+                                      }`}
+                                    >
+                                      <div className={`w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-2 ${
+                                        answer.is_correct === false ? 'bg-red-500' : 'bg-red-100'
+                                      }`}>
+                                        <X size={24} className={answer.is_correct === false ? 'text-white' : 'text-red-600'} />
+                                      </div>
+                                      <div className={`text-sm font-semibold ${
+                                        answer.is_correct === false ? 'text-red-700' : 'text-gray-700'
+                                      }`}>
+                                        Incorrect
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-1">Mark as wrong answer</div>
+                                    </button>
+
+                                    {/* New Question Button/Card */}
+                                    <button
+                                      onClick={() => {
+                                        if (answer.next_question) {
+                                          navigateToQuestion(answer.next_question.id);
+                                        } else {
+                                          createBranchQuestion(answer.id);
+                                        }
+                                      }}
+                                      className={`p-4 rounded-lg border-2 transition-all text-center ${
+                                        answer.next_question && !getExistingQuestions()[answer.next_question.id]
+                                          ? 'border-purple-500 bg-purple-50'
+                                          : 'border-gray-200 bg-white hover:border-purple-300'
+                                      }`}
+                                    >
+                                      <div className={`w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-2 ${
+                                        answer.next_question && !getExistingQuestions()[answer.next_question.id]
+                                          ? 'bg-purple-500'
+                                          : 'bg-purple-100'
+                                      }`}>
+                                        <Plus size={24} className={
+                                          answer.next_question && !getExistingQuestions()[answer.next_question.id]
+                                            ? 'text-white'
+                                            : 'text-purple-600'
+                                        } />
+                                      </div>
+                                      <div className={`text-sm font-semibold ${
+                                        answer.next_question && !getExistingQuestions()[answer.next_question.id]
+                                          ? 'text-purple-700'
+                                          : 'text-gray-700'
+                                      }`}>
+                                        New Question
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-1">Create fresh question</div>
+                                    </button>
+
+                                    {/* Link Existing Button/Card */}
+                                    <button
+                                      onClick={() => {
+                                        if (answer.next_question && getExistingQuestions()[answer.next_question.id]) {
+                                          navigateToQuestion(answer.next_question.id);
                                         } else {
                                           setLinkingAnswerId(answer.id);
                                           setShowLinkDialog(true);
                                         }
                                       }}
-                                      className="px-4 py-2.5 hover:opacity-90 border-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
-                                      style={{
-                                        borderColor: '#688cd5',
-                                        color: '#688cd5'
-                                      }}
+                                      className={`p-4 rounded-lg border-2 transition-all text-center ${
+                                        answer.next_question && getExistingQuestions()[answer.next_question.id]
+                                          ? 'border-blue-500 bg-blue-50'
+                                          : 'border-gray-200 bg-white hover:border-blue-300'
+                                      }`}
                                     >
-                                      {answer.next_question ? (
-                                        <>
-                                          <X size={18} />
-                                          Unlink
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Link size={18} />
-                                          Link Existing
-                                        </>
-                                      )}
+                                      <div className={`w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-2 ${
+                                        answer.next_question && getExistingQuestions()[answer.next_question.id]
+                                          ? 'bg-blue-500'
+                                          : 'bg-blue-100'
+                                      }`}>
+                                        <Link size={24} className={
+                                          answer.next_question && getExistingQuestions()[answer.next_question.id]
+                                            ? 'text-white'
+                                            : 'text-blue-600'
+                                        } />
+                                      </div>
+                                      <div className={`text-sm font-semibold ${
+                                        answer.next_question && getExistingQuestions()[answer.next_question.id]
+                                          ? 'text-blue-700'
+                                          : 'text-gray-700'
+                                      }`}>
+                                        Link Existing
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-1">Connect to existing question</div>
                                     </button>
                                   </div>
                                 </div>
