@@ -12,6 +12,8 @@ const QuestionBuilder = () => {
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkingAnswerId, setLinkingAnswerId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [expandedMessages, setExpandedMessages] = useState(new Set());
+  const [showHint, setShowHint] = useState(false);
 
   const [existingQuestionsState, setExistingQuestionsState] = useState({
     'existing-1': {
@@ -514,6 +516,18 @@ const QuestionBuilder = () => {
     });
   };
 
+  const toggleMessageExpand = (answerId) => {
+    setExpandedMessages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(answerId)) {
+        newSet.delete(answerId);
+      } else {
+        newSet.add(answerId);
+      }
+      return newSet;
+    });
+  };
+
   const renderTreeNode = (node, level = 0) => {
     if (!node) return null;
 
@@ -893,6 +907,51 @@ const QuestionBuilder = () => {
                   </div>
                 </div>
 
+                <div>
+                  <div
+                    className="flex items-center gap-2 cursor-pointer text-gray-600 hover:text-gray-800"
+                    onClick={() => setShowHint(!showHint)}
+                  >
+                    <span className="text-sm font-medium">Hint (optional)</span>
+                    <button
+                      className="w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                      style={{
+                        backgroundColor: showHint ? '#688cd5' : '#e5e7eb',
+                        color: showHint ? 'white' : '#6b7280'
+                      }}
+                    >
+                      {showHint ? <X size={16} /> : <Plus size={16} />}
+                    </button>
+                  </div>
+
+                  {showHint && (
+                    <div className="mt-3 animate-fadeIn">
+                      <div className="flex gap-3 items-start">
+                        <textarea
+                          placeholder="Type hint text here..."
+                          className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                          rows={3}
+                          value={currentQuestion.hint?.[currentLanguage] || ''}
+                          onChange={(e) => {
+                            updateCurrentQuestion({
+                              hint: {
+                                ...currentQuestion.hint,
+                                [currentLanguage]: e.target.value
+                              }
+                            });
+                          }}
+                        />
+                        <button className="flex-shrink-0 w-24 h-24 border-2 border-gray-300 rounded-lg hover:border-gray-400 transition-colors flex flex-col items-center justify-center gap-1 bg-white">
+                          <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#e8eef7' }}>
+                            <Upload size={24} style={{ color: '#688cd5' }} />
+                          </div>
+                          <span className="text-xs text-gray-600">Select Image</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="pt-6">
                   <button
                     onClick={() => setCurrentStep(2)}
@@ -942,6 +1001,57 @@ const QuestionBuilder = () => {
                                 <Upload size={24} style={{ color: '#688cd5' }} />
                                 <span className="text-xs text-gray-600">Select Image</span>
                               </button>
+                            </div>
+
+                            <div className="mt-4">
+                              <div
+                                className="flex items-center gap-2 cursor-pointer text-gray-600 hover:text-gray-800"
+                                onClick={() => toggleMessageExpand(answer.id)}
+                              >
+                                <span className="text-sm font-medium">Message after selecting this answer (optional)</span>
+                                <button
+                                  className="w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                                  style={{
+                                    backgroundColor: expandedMessages.has(answer.id) ? '#688cd5' : '#e5e7eb',
+                                    color: expandedMessages.has(answer.id) ? 'white' : '#6b7280'
+                                  }}
+                                >
+                                  {expandedMessages.has(answer.id) ? <X size={16} /> : <Plus size={16} />}
+                                </button>
+                              </div>
+
+                              {expandedMessages.has(answer.id) && (
+                                <div className="mt-3 animate-fadeIn">
+                                  <div className="flex gap-3 items-start">
+                                    <textarea
+                                      placeholder="Message Text shown after selecting this answer"
+                                      className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                                      rows={4}
+                                      value={answer.res_explain?.[currentLanguage] || ''}
+                                      onChange={(e) => {
+                                        const updatedAnswers = currentQuestion.answers.map(a =>
+                                          a.id === answer.id
+                                            ? {
+                                                ...a,
+                                                res_explain: {
+                                                  ...a.res_explain,
+                                                  [currentLanguage]: e.target.value
+                                                }
+                                              }
+                                            : a
+                                        );
+                                        updateCurrentQuestion({ answers: updatedAnswers });
+                                      }}
+                                    />
+                                    <button className="flex-shrink-0 w-24 h-24 border-2 border-gray-300 rounded-lg hover:border-gray-400 transition-colors flex flex-col items-center justify-center gap-1 bg-white">
+                                      <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#e8eef7' }}>
+                                        <Upload size={24} style={{ color: '#688cd5' }} />
+                                      </div>
+                                      <span className="text-xs text-gray-600">Select Image</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             {!answer.next_question && (
