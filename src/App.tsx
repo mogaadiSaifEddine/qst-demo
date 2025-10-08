@@ -541,7 +541,7 @@ const QuestionBuilder = () => {
             </div>
           )}
 
-          <div className="flex items-center gap-2 flex-1" onClick={() => navigateToQuestionFromTree(id)}>
+          <div className="flex items-center gap-2 flex-1 group" onClick={() => navigateToQuestionFromTree(id)}>
             <div className="w-4 flex justify-center">
               {hasChildren && (
                 <button
@@ -592,6 +592,48 @@ const QuestionBuilder = () => {
                 : question.question?.[currentLanguage] || 'Untitled Question'
               }
             </span>
+
+            {id !== 'root' && !isDeleted && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`Delete question "${question.question?.[currentLanguage] || 'Untitled Question'}"? This will remove it from the tree.`)) {
+                    // Remove the question from the questions state
+                    const newQuestions = { ...questions };
+                    delete newQuestions[id];
+
+                    // Find and unlink from parent
+                    if (question.parentId) {
+                      const parentQuestion = newQuestions[question.parentId];
+                      if (parentQuestion) {
+                        const updatedAnswers = parentQuestion.answers.map(a =>
+                          a.next_question?.id === id
+                            ? { ...a, next_question: null, is_correct: null }
+                            : a
+                        );
+                        newQuestions[question.parentId] = {
+                          ...parentQuestion,
+                          answers: updatedAnswers
+                        };
+                      }
+                    }
+
+                    setQuestions(newQuestions);
+
+                    // If the deleted question was in the navigation stack, navigate back
+                    if (navigationStack.includes(id)) {
+                      const indexInStack = navigationStack.indexOf(id);
+                      setNavigationStack(navigationStack.slice(0, indexInStack));
+                      setCurrentStep(2);
+                    }
+                  }
+                }}
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-all"
+                title="Delete question"
+              >
+                <Trash2 size={14} className="text-red-500" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -736,25 +778,62 @@ const QuestionBuilder = () => {
                 {getBreadcrumbs().map((crumb, index) => (
                   <div key={crumb.id} className="flex items-center gap-2">
                     {index > 0 && <ChevronDown className="rotate-[-90deg] text-white/60" size={16} />}
-                    <button
-                      onClick={() => {
-                        if (crumb.id === 'root') {
-                          navigateToRoot();
-                        } else {
-                          const targetIndex = navigationStack.indexOf(crumb.id);
-                          setNavigationStack(navigationStack.slice(0, targetIndex + 1));
-                          setCurrentStep(2);
-                        }
-                      }}
-                      className={`text-sm px-3 py-1 rounded transition-colors ${index === getBreadcrumbs().length - 1
-                        ? 'bg-white font-semibold'
-                        : 'text-white/80 hover:bg-white/20'
-                        }`}
-                      style={index === getBreadcrumbs().length - 1 ? { color: '#688cd5' } : {}}
-                    >
-                      {index === 0 && <Home size={14} className="inline mr-1" />}
-                      {crumb.label.substring(0, 25)}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          if (crumb.id === 'root') {
+                            navigateToRoot();
+                          } else {
+                            const targetIndex = navigationStack.indexOf(crumb.id);
+                            setNavigationStack(navigationStack.slice(0, targetIndex + 1));
+                            setCurrentStep(2);
+                          }
+                        }}
+                        className={`text-sm px-3 py-1 rounded transition-colors ${index === getBreadcrumbs().length - 1
+                          ? 'bg-white font-semibold'
+                          : 'text-white/80 hover:bg-white/20'
+                          }`}
+                        style={index === getBreadcrumbs().length - 1 ? { color: '#688cd5' } : {}}
+                      >
+                        {index === 0 && <Home size={14} className="inline mr-1" />}
+                        {crumb.label.substring(0, 25)}
+                      </button>
+                      {crumb.id !== 'root' && index !== getBreadcrumbs().length - 1 && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Delete question "${crumb.label}"? This will remove it from the tree.`)) {
+                              // Remove the question from the questions state
+                              const newQuestions = { ...questions };
+                              delete newQuestions[crumb.id];
+
+                              // Find and unlink from parent
+                              const parentQuestion = questions[navigationStack[index - 1]];
+                              if (parentQuestion) {
+                                const updatedAnswers = parentQuestion.answers.map(a =>
+                                  a.next_question?.id === crumb.id
+                                    ? { ...a, next_question: null, is_correct: null }
+                                    : a
+                                );
+                                newQuestions[navigationStack[index - 1]] = {
+                                  ...parentQuestion,
+                                  answers: updatedAnswers
+                                };
+                              }
+
+                              setQuestions(newQuestions);
+
+                              // Navigate back to the previous question
+                              setNavigationStack(navigationStack.slice(0, index));
+                              setCurrentStep(2);
+                            }
+                          }}
+                          className="p-1 hover:bg-red-500/20 rounded transition-colors"
+                          title="Delete question"
+                        >
+                          <Trash2 size={14} className="text-white/80 hover:text-white" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
