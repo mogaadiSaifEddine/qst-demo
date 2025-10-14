@@ -1,0 +1,737 @@
+<div class="min-h-screen bg-gray-50 p-6">
+  <div class="flex gap-6">
+    <!-- Tree Navigation Panel -->
+    <div *ngIf="showTreeNavigation"
+         class="bg-white rounded-lg shadow-lg animate-fadeIn relative flex"
+         [style.width.px]="treeWidth"
+         style="min-width: 250px; max-width: 600px">
+      <div class="flex-1 flex flex-col">
+        <div class="p-4 border-b bg-gray-50">
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-gray-800 flex items-center gap-2">
+              <mat-icon class="primary-color">account_tree</mat-icon>
+              Question Tree
+            </h3>
+            <div class="flex items-center gap-2">
+              <button (click)="expandAllNodes()"
+                      class="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                      title="Expand All">
+                Expand All
+              </button>
+              <button (click)="showTreeNavigation = false"
+                      class="text-gray-400 hover:text-gray-600">
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="p-4 max-h-[calc(100vh-200px)] overflow-y-auto flex-1">
+          <ng-container *ngIf="buildQuestionTree() as tree">
+            <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { node: tree, level: 0 }"></ng-container>
+          </ng-container>
+        </div>
+      </div>
+
+      <!-- Resize Handle -->
+      <div class="w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors flex-shrink-0">
+        <div class="w-full h-full flex items-center justify-center">
+          <div class="w-0.5 h-8 bg-gray-400 rounded"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="bg-white rounded-lg shadow-lg transition-all duration-300"
+         [ngClass]="showTreeNavigation ? 'flex-1' : 'max-w-4xl mx-auto w-full'"
+         [style.width]="showTreeNavigation ? 'calc(100% - ' + (treeWidth + 24) + 'px)' : ''">
+
+      <!-- Header -->
+      <div class="p-6 border-b primary-bg">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-2xl font-bold text-white">Create Question</h2>
+          <div class="flex items-center gap-2">
+            <button *ngIf="hasDecisionTreeQuestions()"
+                    (click)="showTreeNavigation = !showTreeNavigation"
+                    class="px-3 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+                    [ngClass]="showTreeNavigation ? 'bg-white primary-text' : 'text-white hover:bg-white/20'">
+              <mat-icon>account_tree</mat-icon>
+              Tree View
+            </button>
+            <button class="text-white hover:bg-white/20 p-2 rounded-lg transition-colors"
+                    (click)="closeDialog()">
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+        </div>
+
+        <!-- Breadcrumbs -->
+        <div *ngIf="!isRoot" class="flex items-center gap-2 flex-wrap">
+          <ng-container *ngFor="let crumb of getBreadcrumbs(); let index = index">
+            <mat-icon *ngIf="index > 0" class="rotate-[-90deg] text-white/60" style="font-size: 16px">expand_more</mat-icon>
+            <div class="flex items-center gap-1 relative">
+              <button (click)="navigateToBreadcrumb(crumb, index)"
+                      class="text-sm px-3 py-1 rounded transition-colors"
+                      [ngClass]="crumb.isLast ? 'bg-white font-semibold primary-text' : 'text-white/80 hover:bg-white/20'">
+                <mat-icon *ngIf="index === 0" style="font-size: 14px; width: 14px; height: 14px; vertical-align: middle; margin-right: 4px">home</mat-icon>
+                {{ crumb.label.substring(0, 25) }}
+              </button>
+
+              <button *ngIf="crumb.id !== 'root' && !crumb.isLast"
+                      (click)="deleteQuestion(crumb.id, index)"
+                      class="p-1 hover:bg-red-500/20 rounded transition-colors"
+                      title="Delete question">
+                <mat-icon style="font-size: 14px; width: 14px; height: 14px">delete</mat-icon>
+              </button>
+
+              <!-- Children dropdown -->
+              <div *ngIf="crumb.children && crumb.children.length > 0"
+                   class="relative"
+                   #breadcrumbDropdown>
+                <button (click)="toggleBreadcrumbChildren(crumb.id)"
+                        class="p-1 hover:bg-white/20 rounded transition-colors"
+                        title="Show sub-questions">
+                  <mat-icon class="text-white/80 transition-transform"
+                            [ngClass]="showBreadcrumbChildren[crumb.id] ? '' : 'rotate-[-90deg]'"
+                            style="font-size: 14px">expand_more</mat-icon>
+                </button>
+
+                <div *ngIf="showBreadcrumbChildren[crumb.id]"
+                     class="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border-2 border-gray-200 min-w-[200px] z-50 animate-fadeIn">
+                  <div class="p-2 max-h-[300px] overflow-y-auto">
+                    <button *ngFor="let child of crumb.children"
+                            (click)="navigateToQuestionFromTree(child.id); showBreadcrumbChildren = {}"
+                            class="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors">
+                      <div class="text-xs text-gray-500 mb-1">via: {{ child.answerLabel }}</div>
+                      <div class="text-sm font-medium text-gray-900">{{ child.label }}</div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+      </div>
+
+      <!-- Language Tabs -->
+      <div class="px-6 py-3 border-b bg-gray-50">
+        <div class="flex items-center gap-2 flex-wrap">
+          <button *ngFor="let lang of availableLanguages"
+                  (click)="currentLanguage = lang"
+                  class="flex items-center gap-2 px-3 py-1.5 rounded transition-colors"
+                  [ngClass]="currentLanguage === lang ? 'bg-white border-b-2 font-semibold primary-text primary-border-bottom' : 'text-gray-600 hover:bg-gray-100'">
+            <span>{{ getLangName(lang) }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step Tabs -->
+      <div class="flex border-b">
+        <div class="flex-1 p-4 text-center border-r cursor-pointer transition-colors"
+             (click)="currentStep = 1"
+             [ngClass]="currentStep === 1 ? 'bg-blue-50 border-b-2 primary-border-bottom' : 'hover:bg-gray-50'">
+          <div class="text-xs font-semibold mb-1"
+               [ngClass]="currentStep === 1 ? 'primary-text' : 'text-gray-500'">
+            STEP 1
+          </div>
+          <div class="text-sm font-medium"
+               [ngClass]="currentStep === 1 ? 'text-gray-900' : 'text-gray-600'">
+            Write Question
+          </div>
+        </div>
+        <div class="flex-1 p-4 text-center cursor-pointer transition-colors"
+             (click)="currentStep = 2"
+             [ngClass]="currentStep === 2 ? 'bg-blue-50 border-b-2 primary-border-bottom' : 'hover:bg-gray-50'">
+          <div class="text-xs font-semibold mb-1"
+               [ngClass]="currentStep === 2 ? 'primary-text' : 'text-gray-500'">
+            STEP 2
+          </div>
+          <div class="text-sm font-medium"
+               [ngClass]="currentStep === 2 ? 'text-gray-900' : 'text-gray-600'">
+            Configure Answers
+          </div>
+        </div>
+      </div>
+
+      <!-- Content Area -->
+      <div class="p-8">
+        <!-- STEP 1: Write Question -->
+        <div *ngIf="currentStep === 1" class="max-w-2xl mx-auto space-y-6">
+          <!-- Question Type -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-3">Question Type</label>
+            <div class="grid grid-cols-2 gap-3">
+              <button *ngFor="let type of ['multiple-choice', 'written-answer']"
+                      (click)="handleQuestionTypeChange(type)"
+                      class="p-4 border-2 rounded-lg text-center transition-all"
+                      [ngClass]="currentQuestion.question_type === type ? 'text-white border-transparent shadow-md primary-bg' : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'">
+                <div class="font-semibold text-sm mb-1">
+                  {{ getQuestionTypeDisplay(type) }}
+                </div>
+                <div class="text-xs opacity-80">
+                  <ng-container [ngSwitch]="type">
+                    <span *ngSwitchCase="'multiple-choice'">Select from multiple options</span>
+                    <span *ngSwitchCase="'written-answer'">Open text response</span>
+                  </ng-container>
+                </div>
+              </button>
+            </div>
+            <div *ngIf="getActualQuestionType(currentQuestion) === 'decision-tree'"
+                 class="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div class="text-sm text-blue-700">
+                <strong>Auto-detected as Decision Tree:</strong> This multiple choice question has nested questions, making it a decision tree.
+              </div>
+            </div>
+          </div>
+
+          <!-- Answer Format (for written-answer) -->
+          <div *ngIf="currentQuestion.question_type === 'written-answer'">
+            <label class="block text-sm font-semibold text-gray-700 mb-3">Answer Format</label>
+            <div class="grid grid-cols-2 gap-3">
+              <button *ngFor="let format of ['free-form', 'specific-format']"
+                      (click)="updateQuestion({ written_answer_format: format })"
+                      class="p-3 border-2 rounded-lg text-center transition-all"
+                      [ngClass]="currentQuestion.written_answer_format === format ? 'text-white border-transparent shadow-md primary-bg' : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'">
+                <div class="font-medium text-sm">
+                  {{ format === 'free-form' ? 'Free-form Text' : 'Specific Format' }}
+                </div>
+                <div class="text-xs opacity-80 mt-1">
+                  <ng-container [ngSwitch]="format">
+                    <span *ngSwitchCase="'free-form'">Any text input allowed</span>
+                    <span *ngSwitchCase="'specific-format'">Constrained input format</span>
+                  </ng-container>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Question Text -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">Question Text</label>
+            <div class="flex gap-3 items-start">
+              <textarea placeholder="Type your question here..."
+                        class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent text-lg"
+                        rows="4"
+                        [(ngModel)]="currentQuestion.question[currentLanguage]"
+                        (ngModelChange)="updateQuestionText($event)"></textarea>
+              <button class="flex-shrink-0 w-24 h-24 border-2 border-gray-300 rounded-lg hover:border-gray-400 transition-colors flex flex-col items-center justify-center gap-1 bg-white">
+                <div class="w-12 h-12 rounded-lg flex items-center justify-center light-primary-bg">
+                  <mat-icon class="primary-text">upload</mat-icon>
+                </div>
+                <span class="text-xs text-gray-600">Select Image</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Hint (optional) -->
+          <div>
+            <div class="flex items-center gap-2 cursor-pointer text-gray-600 hover:text-gray-800"
+                 (click)="showHint = !showHint">
+              <span class="text-sm font-medium">Hint (optional)</span>
+              <button class="w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                      [style.backgroundColor]="showHint ? '#688cd5' : '#e5e7eb'"
+                      [style.color]="showHint ? 'white' : '#6b7280'">
+                <mat-icon style="font-size: 16px; width: 16px; height: 16px">{{ showHint ? 'close' : 'add' }}</mat-icon>
+              </button>
+            </div>
+
+            <div *ngIf="showHint" class="mt-3 animate-fadeIn">
+              <div class="flex gap-3 items-start">
+                <textarea placeholder="Type hint text here..."
+                          class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                          rows="3"
+                          [(ngModel)]="currentQuestion.hint[currentLanguage]"
+                          (ngModelChange)="updateHint($event)"></textarea>
+                <button class="flex-shrink-0 w-24 h-24 border-2 border-gray-300 rounded-lg hover:border-gray-400 transition-colors flex flex-col items-center justify-center gap-1 bg-white">
+                  <div class="w-12 h-12 rounded-lg flex items-center justify-center light-primary-bg">
+                    <mat-icon class="primary-text">upload</mat-icon>
+                  </div>
+                  <span class="text-xs text-gray-600">Select Image</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">Category</label>
+            <select [(ngModel)]="currentQuestion.category"
+                    (ngModelChange)="updateCategory($event)"
+                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:border-transparent">
+              <option value="Geography">Geography</option>
+              <option value="Science">Science</option>
+              <option value="History">History</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Literature">Literature</option>
+              <option value="Technology">Technology</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <!-- Tags -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">Tags (comma-separated)</label>
+            <input type="text"
+                   placeholder="e.g., europe, capitals, easy"
+                   class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:border-transparent"
+                   [value]="getTagsString()"
+                   (input)="updateTags($any($event.target).value)" />
+            <div *ngIf="getTags().length > 0" class="flex gap-2 mt-2 flex-wrap">
+              <span *ngFor="let tag of getTags()"
+                    class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                {{ tag }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Incorrect Feedback (for multiple-choice) -->
+          <div *ngIf="currentQuestion.question_type === 'multiple-choice'">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">
+              Incorrect Answer Feedback (Optional)
+            </label>
+            <textarea placeholder="Message shown when any incorrect answer is selected..."
+                      class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                      rows="3"
+                      [(ngModel)]="currentQuestion.incorrect_feedback[currentLanguage]"
+                      (ngModelChange)="updateIncorrectFeedback($event)"></textarea>
+            <p class="text-xs text-gray-500 mt-1">
+              This message will be shown when the user selects any answer marked as incorrect.
+            </p>
+          </div>
+
+          <!-- Continue Button -->
+          <div class="pt-6">
+            <button (click)="currentStep = 2"
+                    [disabled]="!getQuestionText().trim()"
+                    class="w-full px-6 py-4 hover:opacity-90 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg font-semibold transition-colors text-lg primary-bg">
+              Continue to Answers →
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 2: Configure Answers -->
+        <div *ngIf="currentStep === 2" class="space-y-4">
+          <!-- Question Display -->
+          <div class="px-6 py-4 border rounded-lg light-primary-bg">
+            <div class="text-xs font-semibold mb-1 uppercase primary-text">
+              {{ getQuestionTypeDisplay(getActualQuestionType(currentQuestion)) }}:
+            </div>
+            <div class="text-lg font-semibold text-gray-900">
+              <span *ngIf="getQuestionText(); else noQuestion">{{ getQuestionText() }}</span>
+              <ng-template #noQuestion>
+                <span class="text-gray-400 italic">No question text yet</span>
+              </ng-template>
+            </div>
+          </div>
+
+          <!-- Free-form Written Answer -->
+          <div *ngIf="getActualQuestionType(currentQuestion) === 'written-answer' && currentQuestion.written_answer_format === 'free-form'"
+               class="text-center text-gray-600 py-8">
+            <div class="text-lg font-semibold mb-2">Written Answer Question</div>
+            <p>This question will collect open-text responses from users.</p>
+          </div>
+
+          <!-- Specific-format Written Answer -->
+          <div *ngIf="getActualQuestionType(currentQuestion) === 'written-answer' && currentQuestion.written_answer_format === 'specific-format'"
+               class="space-y-4">
+            <div class="text-sm text-gray-700 mb-4">
+              <strong>Specific Format:</strong> Define the acceptable answers for this written question. All answers are considered correct.
+            </div>
+            <div *ngFor="let answer of currentQuestion.answers; let index = index"
+                 class="border-2 border-gray-200 rounded-lg p-5">
+              <div class="flex items-start gap-4">
+                <div class="flex-shrink-0 w-8 h-8 rounded-full text-white font-bold flex items-center justify-center text-sm primary-bg">
+                  {{ index + 1 }}
+                </div>
+                <div class="flex-1 space-y-4">
+                  <div class="flex gap-3 items-start">
+                    <textarea placeholder="Acceptable answer text"
+                              class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                              rows="2"
+                              [(ngModel)]="answer.res_answer[currentLanguage]"
+                              (ngModelChange)="updateAnswerText(answer.id, $event)"></textarea>
+                  </div>
+
+                  <div class="mt-4">
+                    <div class="flex items-center gap-2 cursor-pointer text-gray-600 hover:text-gray-800"
+                         (click)="toggleMessageExpand(answer.id)">
+                      <span class="text-sm font-medium">Feedback message (optional)</span>
+                      <button class="w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                              [style.backgroundColor]="isMessageExpanded(answer.id) ? '#688cd5' : '#e5e7eb'"
+                              [style.color]="isMessageExpanded(answer.id) ? 'white' : '#6b7280'">
+                        <mat-icon style="font-size: 16px; width: 16px; height: 16px">
+                          {{ isMessageExpanded(answer.id) ? 'close' : 'add' }}
+                        </mat-icon>
+                      </button>
+                    </div>
+
+                    <div *ngIf="isMessageExpanded(answer.id)" class="mt-3 animate-fadeIn">
+                      <textarea placeholder="Message shown when this answer is entered"
+                                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                                rows="3"
+                                [(ngModel)]="answer.res_explain[currentLanguage]"
+                                (ngModelChange)="updateAnswerExplain(answer.id, $event)"></textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <button *ngIf="currentQuestion.answers.length > 1"
+                        (click)="removeAnswer(answer.id)"
+                        class="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </div>
+            </div>
+
+            <button (click)="addAnswer()"
+                    class="w-full px-4 py-3 border-2 border-dashed hover:opacity-90 rounded-lg transition-colors flex items-center justify-center gap-2 font-semibold primary-text primary-border"
+                    style="background-color: transparent">
+              <mat-icon>add</mat-icon>
+              Add Another Answer
+            </button>
+          </div>
+
+          <!-- Multiple Choice / Decision Tree Answers -->
+          <div *ngIf="getActualQuestionType(currentQuestion) !== 'written-answer'" class="space-y-4">
+            <div *ngFor="let answer of currentQuestion.answers; let index = index"
+                 class="border-2 border-gray-200 rounded-lg p-5">
+              <div class="flex items-start gap-4">
+                <div class="flex-shrink-0 w-8 h-8 rounded-full text-white font-bold flex items-center justify-center text-sm primary-bg">
+                  {{ index + 1 }}
+                </div>
+                <div class="flex-1 space-y-4">
+                  <div class="flex gap-3 items-start">
+                    <textarea placeholder="Answer text"
+                              class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                              rows="3"
+                              [(ngModel)]="answer.res_answer[currentLanguage]"
+                              (ngModelChange)="updateAnswerText(answer.id, $event)"></textarea>
+                    <button class="flex-shrink-0 w-24 h-24 border-2 border-gray-300 rounded-lg hover:border-gray-400 transition-colors flex flex-col items-center justify-center gap-1 bg-white">
+                      <mat-icon class="primary-text">upload</mat-icon>
+                      <span class="text-xs text-gray-600">Select Image</span>
+                    </button>
+                  </div>
+
+                  <div class="mt-4">
+                    <div class="flex items-center gap-2 cursor-pointer text-gray-600 hover:text-gray-800"
+                         (click)="toggleMessageExpand(answer.id)">
+                      <span class="text-sm font-medium">Message after selecting this answer (optional)</span>
+                      <button class="w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                              [style.backgroundColor]="isMessageExpanded(answer.id) ? '#688cd5' : '#e5e7eb'"
+                              [style.color]="isMessageExpanded(answer.id) ? 'white' : '#6b7280'">
+                        <mat-icon style="font-size: 16px; width: 16px; height: 16px">
+                          {{ isMessageExpanded(answer.id) ? 'close' : 'add' }}
+                        </mat-icon>
+                      </button>
+                    </div>
+
+                    <div *ngIf="isMessageExpanded(answer.id)" class="mt-3 animate-fadeIn">
+                      <div class="flex gap-3 items-start">
+                        <textarea placeholder="Message Text shown after selecting this answer"
+                                  class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                                  rows="4"
+                                  [(ngModel)]="answer.res_explain[currentLanguage]"
+                                  (ngModelChange)="updateAnswerExplain(answer.id, $event)"></textarea>
+                        <button class="flex-shrink-0 w-24 h-24 border-2 border-gray-300 rounded-lg hover:border-gray-400 transition-colors flex flex-col items-center justify-center gap-1 bg-white">
+                          <div class="w-12 h-12 rounded-lg flex items-center justify-center light-primary-bg">
+                            <mat-icon class="primary-text">upload</mat-icon>
+                          </div>
+                          <span class="text-xs text-gray-600">Select Image</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- What Happens Next Section -->
+                  <div *ngIf="currentQuestion.question_type !== 'written-answer'"
+                       class="border-2 rounded-lg p-4 branch-bg branch-border">
+                    <div class="flex items-center gap-2 mb-3 font-semibold text-sm primary-text">
+                      <mat-icon style="font-size: 16px">account_tree</mat-icon>
+                      <span>What happens next?</span>
+                    </div>
+
+                    <div class="space-y-3">
+                      <!-- Nested Question Section -->
+                      <div *ngIf="answer.next_question"
+                           class="bg-white border-2 rounded-lg p-3 animate-fadeIn primary-border">
+                        <div class="flex items-center justify-between">
+                          <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                              <span class="text-xs font-semibold px-2 py-1 rounded light-primary-bg primary-text">
+                                {{ getQuestionTypeDisplay(getBranchQuestion(answer)?.question_type || 'unknown') }}
+                              </span>
+                              <span class="text-xs text-gray-500">
+                                {{ getExistingQuestions()[answer.next_question.id] ? 'Linked' : 'Created' }}
+                              </span>
+                            </div>
+                            <div class="text-sm font-medium text-gray-900">
+                              {{ getBranchQuestion(answer)?.question?.[currentLanguage] || 'Untitled Question' }}
+                            </div>
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <button (click)="navigateToQuestion(answer.next_question.id)"
+                                    class="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                                    title="Edit & Add Sub-Questions">
+                              <mat-icon class="primary-text" style="font-size: 16px">edit</mat-icon>
+                            </button>
+                            <button (click)="unlinkQuestion(answer.id)"
+                                    class="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                                    title="Unlink Question">
+                              <mat-icon class="text-gray-500" style="font-size: 16px">close</mat-icon>
+                            </button>
+                          </div>
+                        </div>
+                        <div *ngIf="getChildrenCount(getBranchQuestion(answer)) > 0"
+                             class="mt-2 text-xs text-gray-500">
+                          <mat-icon style="font-size: 12px; width: 12px; height: 12px; vertical-align: middle">account_tree</mat-icon>
+                          {{ getChildrenCount(getBranchQuestion(answer)) }} sub-question{{ getChildrenCount(getBranchQuestion(answer)) !== 1 ? 's' : '' }}
+                        </div>
+                      </div>
+
+                      <!-- Unified Choice Grid -->
+                      <div class="grid grid-cols-2 gap-3">
+                        <!-- Correct Button -->
+                        <button (click)="setCorrectAnswer(answer.id)"
+                                class="p-4 rounded-lg border-2 transition-all text-center"
+                                [ngClass]="answer.is_correct === true ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:border-green-300'">
+                          <div class="w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-2"
+                               [ngClass]="answer.is_correct === true ? 'bg-green-500' : 'bg-green-100'">
+                            <mat-icon [ngClass]="answer.is_correct === true ? 'text-white' : 'text-green-600'">check_circle</mat-icon>
+                          </div>
+                          <div class="text-sm font-semibold"
+                               [ngClass]="answer.is_correct === true ? 'text-green-700' : 'text-gray-700'">
+                            Correct
+                          </div>
+                          <div class="text-xs text-gray-500 mt-1">Mark as correct answer</div>
+                        </button>
+
+                        <!-- Incorrect Button -->
+                        <button (click)="setIncorrectAnswer(answer.id)"
+                                class="p-4 rounded-lg border-2 transition-all text-center"
+                                [ngClass]="answer.is_correct === false ? 'border-red-500 bg-red-50' : 'border-gray-200 bg-white hover:border-red-300'">
+                          <div class="w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-2"
+                               [ngClass]="answer.is_correct === false ? 'bg-red-500' : 'bg-red-100'">
+                            <mat-icon [ngClass]="answer.is_correct === false ? 'text-white' : 'text-red-600'">close</mat-icon>
+                          </div>
+                          <div class="text-sm font-semibold"
+                               [ngClass]="answer.is_correct === false ? 'text-red-700' : 'text-gray-700'">
+                            Incorrect
+                          </div>
+                          <div class="text-xs text-gray-500 mt-1">Mark as wrong answer</div>
+                        </button>
+
+                        <!-- New Question Button -->
+                        <button (click)="answer.next_question ? navigateToQuestion(answer.next_question.id) : createBranchQuestion(answer.id)"
+                                class="p-4 rounded-lg border-2 transition-all text-center"
+                                [ngClass]="answer.next_question && !getExistingQuestions()[answer.next_question.id] ? 'border-purple-500 bg-purple-50' : 'border-gray-200 bg-white hover:border-purple-300'">
+                          <div class="w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-2"
+                               [ngClass]="answer.next_question && !getExistingQuestions()[answer.next_question.id] ? 'bg-purple-500' : 'bg-purple-100'">
+                            <mat-icon [ngClass]="answer.next_question && !getExistingQuestions()[answer.next_question.id] ? 'text-white' : 'text-purple-600'">add</mat-icon>
+                          </div>
+                          <div class="text-sm font-semibold"
+                               [ngClass]="answer.next_question && !getExistingQuestions()[answer.next_question.id] ? 'text-purple-700' : 'text-gray-700'">
+                            New Question
+                          </div>
+                          <div class="text-xs text-gray-500 mt-1">Create fresh question</div>
+                        </button>
+
+                        <!-- Link Existing Button -->
+                        <button (click)="answer.next_question && getExistingQuestions()[answer.next_question.id] ? navigateToQuestion(answer.next_question.id) : (linkingAnswerId = answer.id; showLinkDialog = true)"
+                                class="p-4 rounded-lg border-2 transition-all text-center"
+                                [ngClass]="answer.next_question && getExistingQuestions()[answer.next_question.id] ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'">
+                          <div class="w-12 h-12 mx-auto rounded-lg flex items-center justify-center mb-2"
+                               [ngClass]="answer.next_question && getExistingQuestions()[answer.next_question.id] ? 'bg-blue-500' : 'bg-blue-100'">
+                            <mat-icon [ngClass]="answer.next_question && getExistingQuestions()[answer.next_question.id] ? 'text-white' : 'text-blue-600'">link</mat-icon>
+                          </div>
+                          <div class="text-sm font-semibold"
+                               [ngClass]="answer.next_question && getExistingQuestions()[answer.next_question.id] ? 'text-blue-700' : 'text-gray-700'">
+                            Link Existing
+                          </div>
+                          <div class="text-xs text-gray-500 mt-1">Connect to existing question</div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button *ngIf="currentQuestion.answers.length > 1"
+                        (click)="removeAnswer(answer.id)"
+                        class="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </div>
+            </div>
+
+            <button (click)="addAnswer()"
+                    class="w-full px-4 py-3 border-2 border-dashed hover:opacity-90 rounded-lg transition-colors flex items-center justify-center gap-2 font-semibold primary-text primary-border"
+                    style="background-color: transparent">
+              <mat-icon>add</mat-icon>
+              Add Another Answer
+            </button>
+          </div>
+
+          <!-- Footer Actions -->
+          <div class="flex items-center justify-between pt-6 border-t">
+            <div class="flex items-center gap-3">
+              <button *ngIf="!isRoot"
+                      (click)="navigateBack()"
+                      class="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors font-medium">
+                ← Back
+              </button>
+              <div class="text-sm text-gray-600">
+                <span class="font-semibold">{{ questions | json | length }}</span> questions in tree
+              </div>
+            </div>
+
+            <button (click)="navigateToRoot()"
+                    class="px-8 py-3 hover:opacity-90 text-white rounded-lg font-semibold transition-colors primary-bg">
+              Save Question
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Type Change Confirmation Dialog -->
+  <div *ngIf="showTypeChangeConfirm"
+       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+      <h3 class="text-lg font-semibold mb-4">Confirm Question Type Change</h3>
+      <p class="text-gray-700 mb-6">
+        <ng-container *ngIf="pendingTypeChange === 'multiple-choice'; else decisionTree">
+          Changing to Multiple Choice will remove all nested sub-questions from this question. This action cannot be undone.
+        </ng-container>
+        <ng-template #decisionTree>
+          Changing to Decision Tree will allow you to add nested questions to your answers.
+        </ng-template>
+      </p>
+      <div class="flex gap-3 justify-end">
+        <button (click)="showTypeChangeConfirm = false; pendingTypeChange = null"
+                class="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium">
+          Cancel
+        </button>
+        <button (click)="confirmTypeChange()"
+                class="px-4 py-2 text-white rounded-lg transition-colors font-medium primary-bg">
+          Confirm Change
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link Existing Question Dialog -->
+  <div *ngIf="showLinkDialog"
+       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+      <div class="p-6 border-b">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold">Link Existing Question</h3>
+          <button (click)="showLinkDialog = false; linkingAnswerId = null; searchTerm = ''"
+                  class="text-gray-400 hover:text-gray-600">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+
+        <div class="mt-4 relative">
+          <mat-icon class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">search</mat-icon>
+          <input type="text"
+                 placeholder="Search questions..."
+                 class="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:border-transparent"
+                 [(ngModel)]="searchTerm" />
+        </div>
+      </div>
+
+      <div class="p-6 max-h-96 overflow-y-auto">
+        <div class="space-y-3">
+          <div *ngFor="let question of getFilteredExistingQuestions()"
+               class="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-200 transition-colors">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-xs font-semibold px-2 py-1 rounded light-primary-bg primary-text">
+                    {{ getQuestionTypeDisplay(question.question_type) }}
+                  </span>
+                  <span class="text-xs text-gray-500">{{ question.category }}</span>
+                </div>
+                <div class="text-sm font-semibold text-gray-900 mb-1">
+                  {{ question.question[currentLanguage] || 'Untitled Question' }}
+                </div>
+              </div>
+              <button (click)="linkExistingQuestion(linkingAnswerId!, question.id)"
+                      class="px-3 py-1.5 hover:opacity-80 text-white rounded text-xs font-semibold transition-colors flex items-center gap-1 primary-bg">
+                <mat-icon style="font-size: 14px; width: 14px; height: 14px">link</mat-icon>
+                Link
+              </button>
+            </div>
+          </div>
+
+          <div *ngIf="getFilteredExistingQuestions().length === 0"
+               class="text-center text-gray-500 py-8">
+            <p>No questions found.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tree Node Template -->
+<ng-template #treeNodeTemplate let-node="node" let-level="level">
+  <div class="tree-node" *ngIf="node">
+    <div class="relative flex items-center gap-2 p-2 rounded cursor-pointer transition-colors"
+         [ngClass]="currentQuestionId === node.id ? 'bg-blue-100 border-l-4 primary-border-left' : 'hover:bg-gray-50'"
+         [style.marginLeft.px]="level * 20"
+         (click)="navigateToQuestionFromTree(node.id)">
+
+      <div class="w-4 flex justify-center">
+        <button *ngIf="node.children.length > 0"
+                (click)="$event.stopPropagation(); toggleNodeCollapse(node.id)"
+                class="hover:bg-gray-200 rounded p-0.5 transition-colors">
+          <mat-icon class="text-gray-400 transition-transform"
+                    [ngClass]="isNodeCollapsed(node.id) ? 'rotate-[-90deg]' : ''"
+                    style="font-size: 14px; width: 14px; height: 14px">expand_more</mat-icon>
+        </button>
+      </div>
+
+      <div class="flex items-center gap-1">
+        <div *ngFor="let i of [].constructor(level)"
+             class="w-1 h-4 rounded-full"
+             [style.backgroundColor]="level === 0 ? '#688cd5' : level === 1 ? '#94a3b8' : '#cbd5e1'"></div>
+      </div>
+
+      <div class="text-xs px-2 py-1 rounded font-semibold"
+           [ngClass]="node.question.isDeleted ? 'bg-red-100 text-red-600' : level === 0 ? 'bg-blue-100 text-blue-700' : level === 1 ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'">
+        {{ node.question.isDeleted ? 'DELETED' : getQuestionTypeDisplay(getActualQuestionType(node.question)).toUpperCase() }}
+      </div>
+
+      <span class="text-sm flex-1"
+            [ngClass]="node.question.isDeleted ? 'text-red-600' : currentQuestionId === node.id ? 'font-semibold text-blue-700' : level === 0 ? 'font-medium text-gray-800' : 'text-gray-700'"
+            [style.maxWidth.px]="treeWidth - 180"
+            style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+        {{ node.id === 'root' ? 'Main Question' : (node.question.question?.[currentLanguage] || 'Untitled Question') }}
+      </span>
+
+      <button *ngIf="node.id !== 'root' && !node.question.isDeleted"
+              (click)="$event.stopPropagation(); deleteTreeNode(node.id, node.question)"
+              class="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-all"
+              title="Delete question">
+        <mat-icon style="font-size: 14px; width: 14px; height: 14px" class="text-red-500">delete</mat-icon>
+      </button>
+    </div>
+
+    <div *ngIf="!isNodeCollapsed(node.id)">
+      <div *ngFor="let child of node.children; let index = index" class="relative">
+        <div class="flex items-center gap-2 py-2 text-xs text-gray-500 relative"
+             [style.marginLeft.px]="(level + 1) * 20">
+          <div class="w-4 h-px bg-gray-300"></div>
+          <span class="px-3 py-1.5 rounded-full border-2 text-xs font-medium"
+                [ngClass]="level === 0 || level === 1 ? 'bg-pink-50 border-pink-200 text-pink-700' : 'bg-gray-50 border-gray-200 text-gray-600'"
+                [style.maxWidth.px]="treeWidth - 100"
+                style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+            {{ child.answer.res_answer?.[currentLanguage] || 'Empty Answer' }}
+          </span>
+        </div>
+        <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { node: child.question, level: level + 1 }"></ng-container>
+      </div>
+    </div>
+  </div>
+</ng-template>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, GitBranch, ChevronDown, Edit, Home, CheckCircle, Trash2, Upload, Link, Search } from 'lucide-react';
 import './App.css'
 const QuestionBuilder = () => {
@@ -14,6 +14,10 @@ const QuestionBuilder = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedMessages, setExpandedMessages] = useState(new Set());
   const [showHint, setShowHint] = useState(false);
+  const [showTypeChangeConfirm, setShowTypeChangeConfirm] = useState(false);
+  const [pendingTypeChange, setPendingTypeChange] = useState(null);
+  const [showBreadcrumbChildren, setShowBreadcrumbChildren] = useState({});
+  const breadcrumbDropdownRef = useRef(null);
 
   const [existingQuestionsState, setExistingQuestionsState] = useState({
     'existing-1': {
@@ -72,6 +76,12 @@ const QuestionBuilder = () => {
         is: ''
       },
       question_type: 'multiple-choice',
+      written_answer_format: null, // 'free-form' or 'specific-format'
+      incorrect_feedback: {
+        en: '',
+        fr: '',
+        is: ''
+      },
       question_image: null,
       hint_image: null,
       answers: [
@@ -104,6 +114,22 @@ const QuestionBuilder = () => {
   const currentQuestion = questions[currentQuestionId] || questions['root'];
   const isRoot = currentQuestionId === 'root';
 
+  // Close breadcrumb dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (breadcrumbDropdownRef.current && !breadcrumbDropdownRef.current.contains(event.target)) {
+        setShowBreadcrumbChildren({});
+      }
+    };
+
+    if (Object.keys(showBreadcrumbChildren).length > 0) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showBreadcrumbChildren]);
+
   const hasDecisionTreeQuestions = () => {
     return Object.values(questions).some(q => q.question_type === 'decision-tree') ||
       Object.values(getExistingQuestions()).some(q => q.question_type === 'decision-tree');
@@ -129,6 +155,38 @@ const QuestionBuilder = () => {
 
     const hasNestedQuestions = question.answers.some(answer => answer.next_question);
     return hasNestedQuestions ? 'decision-tree' : 'multiple-choice';
+  };
+
+  const handleQuestionTypeChange = (newType) => {
+    const currentType = getActualQuestionType(currentQuestion);
+
+    // Check if converting from decision-tree to multiple-choice or vice versa
+    if ((currentType === 'decision-tree' && newType === 'multiple-choice') ||
+        (currentType === 'multiple-choice' && newType === 'decision-tree')) {
+      setPendingTypeChange(newType);
+      setShowTypeChangeConfirm(true);
+    } else {
+      updateCurrentQuestion({ question_type: newType });
+    }
+  };
+
+  const confirmTypeChange = () => {
+    if (pendingTypeChange === 'multiple-choice') {
+      // Remove all nested questions when converting to multiple-choice
+      const updatedAnswers = currentQuestion.answers.map(a => ({
+        ...a,
+        next_question: null,
+        is_correct: null
+      }));
+      updateCurrentQuestion({
+        question_type: pendingTypeChange,
+        answers: updatedAnswers
+      });
+    } else {
+      updateCurrentQuestion({ question_type: pendingTypeChange });
+    }
+    setShowTypeChangeConfirm(false);
+    setPendingTypeChange(null);
   };
 
   const updateQuestionTypeBasedOnContent = (questionUpdates) => {
@@ -316,6 +374,8 @@ const QuestionBuilder = () => {
       question: availableLanguages.reduce((acc, lang) => ({ ...acc, [lang]: '' }), {}),
       hint: availableLanguages.reduce((acc, lang) => ({ ...acc, [lang]: '' }), {}),
       question_type: 'multiple-choice',
+      written_answer_format: null,
+      incorrect_feedback: availableLanguages.reduce((acc, lang) => ({ ...acc, [lang]: '' }), {}),
       question_image: null,
       hint_image: null,
       answers: [
@@ -412,13 +472,38 @@ const QuestionBuilder = () => {
     };
   };
 
+  const getQuestionChildren = (questionId) => {
+    const q = questions[questionId] || getExistingQuestions()[questionId];
+    if (!q || !q.answers) return [];
+
+    return q.answers
+      .filter(answer => answer.next_question && answer.next_question.id)
+      .map(answer => ({
+        id: answer.next_question.id,
+        label: answer.next_question.question?.[currentLanguage] ||
+               (questions[answer.next_question.id] || getExistingQuestions()[answer.next_question.id])?.question?.[currentLanguage] ||
+               'Untitled Question',
+        answerLabel: answer.res_answer?.[currentLanguage] || 'Empty Answer'
+      }));
+  };
+
   const getBreadcrumbs = () => {
-    return navigationStack.map(qId => {
-      if (qId === 'root') return { id: 'root', label: 'Main Question' };
+    return navigationStack.map((qId, index) => {
+      if (qId === 'root') return {
+        id: 'root',
+        label: 'Main Question',
+        children: getQuestionChildren('root'),
+        isLast: index === navigationStack.length - 1
+      };
 
       const q = questions[qId] || getExistingQuestions()[qId];
       if (!q) {
-        return { id: qId, label: '⚠️ Deleted Question' };
+        return {
+          id: qId,
+          label: '⚠️ Deleted Question',
+          children: [],
+          isLast: index === navigationStack.length - 1
+        };
       }
 
       if (q.parentId && q.parentAnswerId) {
@@ -428,7 +513,9 @@ const QuestionBuilder = () => {
           if (parentAnswer && parentAnswer.res_answer?.[currentLanguage]) {
             return {
               id: qId,
-              label: parentAnswer.res_answer[currentLanguage]
+              label: parentAnswer.res_answer[currentLanguage],
+              children: getQuestionChildren(qId),
+              isLast: index === navigationStack.length - 1
             };
           }
         }
@@ -436,7 +523,9 @@ const QuestionBuilder = () => {
 
       return {
         id: qId,
-        label: q.question?.[currentLanguage] || 'Untitled Question'
+        label: q.question?.[currentLanguage] || 'Untitled Question',
+        children: getQuestionChildren(qId),
+        isLast: index === navigationStack.length - 1
       };
     });
   };
@@ -776,9 +865,9 @@ const QuestionBuilder = () => {
             {!isRoot && (
               <div className="flex items-center gap-2 flex-wrap">
                 {getBreadcrumbs().map((crumb, index) => (
-                  <div key={crumb.id} className="flex items-center gap-2">
-                    {index > 0 && <ChevronDown className="rotate-[-90deg] text-white/60" size={16} />}
-                    <div className="flex items-center gap-1">
+                  <React.Fragment key={crumb.id}>
+                    {/* {index > 0 && <ChevronDown className="rotate-[-90deg] text-white/60" size={16} />} */}
+                    <div className="flex items-center gap-1 relative">
                       <button
                         onClick={() => {
                           if (crumb.id === 'root') {
@@ -789,16 +878,17 @@ const QuestionBuilder = () => {
                             setCurrentStep(2);
                           }
                         }}
-                        className={`text-sm px-3 py-1 rounded transition-colors ${index === getBreadcrumbs().length - 1
+                        className={`text-sm px-3 py-1 rounded transition-colors ${crumb.isLast
                           ? 'bg-white font-semibold'
                           : 'text-white/80 hover:bg-white/20'
                           }`}
-                        style={index === getBreadcrumbs().length - 1 ? { color: '#688cd5' } : {}}
+                        style={crumb.isLast ? { color: '#688cd5' } : {}}
                       >
                         {index === 0 && <Home size={14} className="inline mr-1" />}
                         {crumb.label.substring(0, 25)}
                       </button>
-                      {crumb.id !== 'root' && index !== getBreadcrumbs().length - 1 && (
+
+                      {crumb.id !== 'root' && !crumb.isLast && (
                         <button
                           onClick={() => {
                             if (window.confirm(`Delete question "${crumb.label}"? This will remove it from the tree.`)) {
@@ -833,8 +923,49 @@ const QuestionBuilder = () => {
                           <Trash2 size={14} className="text-white/80 hover:text-white" />
                         </button>
                       )}
+
+                      {/* Show children dropdown if this crumb has children */}
+                      {crumb.children && crumb.children.length > 0 && (
+                        <div className="relative" ref={breadcrumbDropdownRef}>
+                          <button
+                            onClick={() => {
+                              setShowBreadcrumbChildren(prev => ({
+                                ...prev,
+                                [crumb.id]: !prev[crumb.id]
+                              }));
+                            }}
+                            className="p-1 hover:bg-white/20 rounded transition-colors"
+                            title="Show sub-questions"
+                          >
+                            <ChevronDown
+                              size={14}
+                              className={`text-white/80 transition-transform ${showBreadcrumbChildren[crumb.id] ? '' : '-rotate-90'}`}
+                            />
+                          </button>
+
+                          {showBreadcrumbChildren[crumb.id] && (
+                            <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border-2 border-gray-200 min-w-[200px] z-50 animate-fadeIn">
+                              <div className="p-2 max-h-[300px] overflow-y-auto">
+                                {crumb.children.map(child => (
+                                  <button
+                                    key={child.id}
+                                    onClick={() => {
+                                      navigateToQuestionFromTree(child.id);
+                                      setShowBreadcrumbChildren({});
+                                    }}
+                                    className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors"
+                                  >
+                                    <div className="text-xs text-gray-500 mb-1">via: {child.answerLabel}</div>
+                                    <div className="text-sm font-medium text-gray-900">{child.label}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  </React.Fragment>
                 ))}
               </div>
             )}
@@ -908,7 +1039,7 @@ const QuestionBuilder = () => {
                     {['multiple-choice', 'written-answer'].map(type => (
                       <button
                         key={type}
-                        onClick={() => updateCurrentQuestion({ question_type: type })}
+                        onClick={() => handleQuestionTypeChange(type)}
                         className={`p-4 border-2 rounded-lg text-center transition-all ${currentQuestion.question_type === type
                           ? 'text-white border-transparent shadow-md'
                           : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
@@ -933,6 +1064,33 @@ const QuestionBuilder = () => {
                     </div>
                   )}
                 </div>
+
+                {currentQuestion.question_type === 'written-answer' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">Answer Format</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {['free-form', 'specific-format'].map(format => (
+                        <button
+                          key={format}
+                          onClick={() => updateCurrentQuestion({ written_answer_format: format })}
+                          className={`p-3 border-2 rounded-lg text-center transition-all ${currentQuestion.written_answer_format === format
+                            ? 'text-white border-transparent shadow-md'
+                            : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
+                            }`}
+                          style={currentQuestion.written_answer_format === format ? { backgroundColor: '#688cd5' } : {}}
+                        >
+                          <div className="font-medium text-sm">
+                            {format === 'free-form' ? 'Free-form Text' : 'Specific Format'}
+                          </div>
+                          <div className="text-xs opacity-80 mt-1">
+                            {format === 'free-form' && 'Any text input allowed'}
+                            {format === 'specific-format' && 'Constrained input format'}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Question Text</label>
@@ -998,6 +1156,72 @@ const QuestionBuilder = () => {
                   )}
                 </div>
 
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Category</label>
+                  <select
+                    value={currentQuestion.category || 'Other'}
+                    onChange={(e) => updateCurrentQuestion({ category: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:border-transparent"
+                  >
+                    <option value="Geography">Geography</option>
+                    <option value="Science">Science</option>
+                    <option value="History">History</option>
+                    <option value="Mathematics">Mathematics</option>
+                    <option value="Literature">Literature</option>
+                    <option value="Technology">Technology</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Tags (comma-separated)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., europe, capitals, easy"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:border-transparent"
+                    value={Object.keys(currentQuestion.tags || {}).join(', ')}
+                    onChange={(e) => {
+                      const tagArray = e.target.value.split(',').map(t => t.trim()).filter(t => t);
+                      const tagObj = tagArray.reduce((acc, tag) => ({ ...acc, [tag]: true }), {});
+                      updateCurrentQuestion({ tags: tagObj });
+                    }}
+                  />
+                  {Object.keys(currentQuestion.tags || {}).length > 0 && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {Object.keys(currentQuestion.tags || {}).map(tag => (
+                        <span key={tag} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {currentQuestion.question_type === 'multiple-choice' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Incorrect Answer Feedback (Optional)
+                    </label>
+                    <textarea
+                      placeholder="Message shown when any incorrect answer is selected..."
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                      rows={3}
+                      value={currentQuestion.incorrect_feedback?.[currentLanguage] || ''}
+                      onChange={(e) => {
+                        updateCurrentQuestion({
+                          incorrect_feedback: {
+                            ...currentQuestion.incorrect_feedback,
+                            [currentLanguage]: e.target.value
+                          }
+                        });
+                      }}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      This message will be shown when the user selects any answer marked as incorrect.
+                    </p>
+                  </div>
+                )}
+
                 <div className="pt-6">
                   <button
                     onClick={() => setCurrentStep(2)}
@@ -1020,10 +1244,98 @@ const QuestionBuilder = () => {
                   </div>
                 </div>
 
-                {getActualQuestionType(currentQuestion) === 'written-answer' ? (
+                {getActualQuestionType(currentQuestion) === 'written-answer' && currentQuestion.written_answer_format === 'free-form' ? (
                   <div className="text-center text-gray-600 py-8">
                     <div className="text-lg font-semibold mb-2">Written Answer Question</div>
                     <p>This question will collect open-text responses from users.</p>
+                  </div>
+                ) : getActualQuestionType(currentQuestion) === 'written-answer' && currentQuestion.written_answer_format === 'specific-format' ? (
+                  <div className="space-y-4">
+                    <div className="text-sm text-gray-700 mb-4">
+                      <strong>Specific Format:</strong> Define the acceptable answers for this written question. All answers are considered correct.
+                    </div>
+                    {currentQuestion.answers.map((answer, index) => (
+                      <div key={answer.id} className="border-2 border-gray-200 rounded-lg p-5">
+                        <div className="flex items-start gap-4">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full text-white font-bold flex items-center justify-center text-sm"
+                            style={{ backgroundColor: '#688cd5' }}>
+                            {index + 1}
+                          </div>
+                          <div className="flex-1 space-y-4">
+                            <div className="flex gap-3 items-start">
+                              <textarea
+                                placeholder="Acceptable answer text"
+                                className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                                rows={2}
+                                value={getAnswerText(answer)}
+                                onChange={(e) => updateAnswerText(answer.id, e.target.value)}
+                              />
+                            </div>
+
+                            <div className="mt-4">
+                              <div
+                                className="flex items-center gap-2 cursor-pointer text-gray-600 hover:text-gray-800"
+                                onClick={() => toggleMessageExpand(answer.id)}
+                              >
+                                <span className="text-sm font-medium">Feedback message (optional)</span>
+                                <button
+                                  className="w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                                  style={{
+                                    backgroundColor: expandedMessages.has(answer.id) ? '#688cd5' : '#e5e7eb',
+                                    color: expandedMessages.has(answer.id) ? 'white' : '#6b7280'
+                                  }}
+                                >
+                                  {expandedMessages.has(answer.id) ? <X size={16} /> : <Plus size={16} />}
+                                </button>
+                              </div>
+
+                              {expandedMessages.has(answer.id) && (
+                                <div className="mt-3 animate-fadeIn">
+                                  <textarea
+                                    placeholder="Message shown when this answer is entered"
+                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                                    rows={3}
+                                    value={answer.res_explain?.[currentLanguage] || ''}
+                                    onChange={(e) => {
+                                      const updatedAnswers = currentQuestion.answers.map(a =>
+                                        a.id === answer.id
+                                          ? {
+                                              ...a,
+                                              res_explain: {
+                                                ...a.res_explain,
+                                                [currentLanguage]: e.target.value
+                                              }
+                                            }
+                                          : a
+                                      );
+                                      updateCurrentQuestion({ answers: updatedAnswers });
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {currentQuestion.answers.length > 1 && (
+                            <button
+                              onClick={() => removeAnswer(answer.id)}
+                              className="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 size={20} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={addAnswer}
+                      className="w-full px-4 py-3 border-2 border-dashed hover:opacity-90 rounded-lg transition-colors flex items-center justify-center gap-2 font-semibold"
+                      style={{ borderColor: '#688cd5', color: '#688cd5', backgroundColor: 'transparent' }}
+                    >
+                      <Plus size={20} />
+                      Add Another Answer
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1130,7 +1442,7 @@ const QuestionBuilder = () => {
                                           <button
                                             onClick={() => navigateToQuestion(answer.next_question.id)}
                                             className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                                            title="Edit Question"
+                                            title="Edit & Add Sub-Questions"
                                           >
                                             <Edit size={16} style={{ color: '#688cd5' }} />
                                           </button>
@@ -1150,6 +1462,17 @@ const QuestionBuilder = () => {
                                           </button>
                                         </div>
                                       </div>
+                                      {/* Show children count if any */}
+                                      {(() => {
+                                        const branchQ = getBranchQuestion(answer);
+                                        const childCount = branchQ?.answers?.filter(a => a.next_question).length || 0;
+                                        return childCount > 0 ? (
+                                          <div className="mt-2 text-xs text-gray-500">
+                                            <GitBranch size={12} className="inline mr-1" />
+                                            {childCount} sub-question{childCount !== 1 ? 's' : ''}
+                                          </div>
+                                        ) : null;
+                                      })()}
                                     </div>
                                   )}
 
@@ -1350,6 +1673,37 @@ const QuestionBuilder = () => {
           </div>
         </div>
       </div>
+
+      {showTypeChangeConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-4">Confirm Question Type Change</h3>
+            <p className="text-gray-700 mb-6">
+              {pendingTypeChange === 'multiple-choice'
+                ? 'Changing to Multiple Choice will remove all nested sub-questions from this question. This action cannot be undone.'
+                : 'Changing to Decision Tree will allow you to add nested questions to your answers.'}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowTypeChangeConfirm(false);
+                  setPendingTypeChange(null);
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmTypeChange}
+                className="px-4 py-2 text-white rounded-lg transition-colors font-medium"
+                style={{ backgroundColor: '#688cd5' }}
+              >
+                Confirm Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLinkDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
